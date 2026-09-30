@@ -1,6 +1,4 @@
-# Project name
-
-LangChain_checkpoint_Oracle_NoSqlDB_integration
+# LangChain checkpoint in Oracle NoSql DB integration
 
 ## Getting Started
 
@@ -8,13 +6,19 @@ To save and retrieve LangGraph checkpoints from a LangChain based application in
 
 ### Requirements ###
 
-The following packages are rquired:
+The following packages are required:
  - Python 3.12+
  - Oracle NoSQL Python SDK (Borneo) 5.5.0+
  - LangChain 1.3.1+
  - LangGraph 1.2.1+
  - LangGraph Checkpoint 4.1.0+
  - For Oracle NoSQL Cloud Service you will need OCI 2.175.0+
+
+Install them using:
+
+```shell
+pip install borneo, langchain, langgraph, langgraph-checkpoint, oci
+```
 
 ## Documentation
 
