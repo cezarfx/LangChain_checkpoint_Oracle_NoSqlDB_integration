@@ -50,7 +50,7 @@ agent = create_agent(
     )
 ```
 
-For a full example see [example.py](./example.py).
+For a full example see [src/example.py](./src/example.py).
 
 ## Help
 
