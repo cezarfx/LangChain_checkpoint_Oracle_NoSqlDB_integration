@@ -1,4 +1,4 @@
-# LangChain checkpoint in Oracle NoSql DB integration
+# LangChain checkpoint with Oracle NoSql DB integration
 
 ## Getting Started
 
