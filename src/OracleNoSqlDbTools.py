@@ -405,26 +405,41 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         limit: int | None = None,
     ) -> AsyncIterator[CheckpointTuple]:
         thread_id = config.get("configurable", {}).get("thread_id")
-        checkpoint_ns = config.get("configurable", {}).get("checkpoint_ns", "")
-        checkpoint_id = config.get("configurable", {}).get("checkpoint_id")
+        checkpoint_id = before.get("configurable", {}).get("checkpoint_id", "")
 
-        print(f"DBG: alist: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}")
+        print(f"DBG: alist: checkpoint_id={checkpoint_id}")
 
-        # todo: implement listing of checkpoints from Oracle NoSQL Database
-
-        # yield  # make this an async generator
-        yield CheckpointTuple(
-            config={
-                "configurable": {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": checkpoint_id,
-                }
-            },
-            checkpoint = None,
-            metadata = None,
-            pending_writes = None,
+        qRes = self._handle.query(
+            QueryRequest().set_statement(
+                f"SELECT * FROM {self._table_name} \
+                    WHERE \
+                        thread_id = '{thread_id}' AND \
+                        checkpoint_id < '{checkpoint_id}' \
+                    ORDER BY checkpoint_id DESC LIMIT {limit if limit else 10}"
+            )
         )
+
+        while True:
+            qRes = self._handle.query(qReq)
+            qRecs = qRes.get_results()
+            if qReq.is_done():
+                break
+            else: 
+                for r in qRecs:
+                    # yield  # make this an async generator
+                    yield CheckpointTuple(
+                        config={
+                            "configurable": {
+                                "thread_id": thread_id,
+                                "checkpoint_ns": r.get("checkpoint_ns"),
+                                "checkpoint_id": r.get("checkpoint_id"),
+                            }
+                        },
+                        checkpoint = None,
+                        metadata = None,
+                        pending_writes = None,
+                    )
+
 
     async def adelete_thread(self, thread_id: str) -> None:
         """Delete all checkpoints associated with a specific thread ID."""
