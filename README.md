@@ -1,28 +1,59 @@
-*This repository acts as a template for all of Oracle’s GitHub repositories. It contains information about the guidelines for those repositories. All files and sections contained in this template are mandatory, and a GitHub app ensures alignment with these guidelines. To get started with a new repository, replace the italic paragraphs with the respective text for your project.*
-
 # Project name
 
-*Describe your project's features, functionality and target audience*
+LangChain_checkpoint_Oracle_NoSqlDB_integration
 
-## Installation
+## Getting Started
 
-*Provide detailed step-by-step installation instructions. You can name this section **How to Run** or **Getting Started** instead of **Installation** if that's more acceptable for your project*
+To save and retrieve LangGraph checkpoints from a LangChain based application in an Oracle NoSQL DB use this library.
+
+### Requirements ###
+
+The following packages are rquired:
+ - Python 3.12+
+ - Oracle NoSQL Python SDK (Borneo) 5.5.0+
+ - LangChain 1.3.1+
+ - LangGraph 1.2.1+
+ - LangGraph Checkpoint 4.1.0+
+ - For Oracle NoSQL Cloud Service you will need OCI 2.175.0+
 
 ## Documentation
 
-*Developer-oriented documentation can be published on GitHub, but all product documentation must be published on <https://docs.oracle.com>*
+The LangChan agent has to be created with an ```OracleNoSqlDbCheckpointer``` as in the example below.
+
+The ```OracleNoSqlDbCheckpointer``` has 3 parameters:
+  - dbEndpoint - the endpoint of the NoSQL Database, by default uses local on-premises: "http://localhost:8080"
+  - tableName - The parent table name to use for checkpoints. It uses 2 tables: a checkpoint parent table by default "checkpoints" and a child table "checkpoint.writes". 
+  - drop_tables - Drops the current tables if True. By default is False.
 
 ## Examples
 
-*Describe any included examples or provide a link to a demo/tutorial*
+The following example shows how to use it in an application:
+
+```python
+llm = ChatOpenAI(
+        model=os.getenv("EXAMPLE_MODEL", "model name"),
+        base_url=os.getenv("EXAMPLE_BASE_URL", "model base URL"),
+        #api_key=os.getenv("EXAMPLE_API_KEY", "llm provider key"),
+    )
+agent = create_agent(
+        model=llm,
+        system_prompt=(
+            "You are a helpful assistant."
+        ),
+        checkpointer = OracleNoSqlDbCheckpointer(ORACLE_NOSQL_DB_ENDPOINT,
+            tableName: str = "checkpoints",
+            drop_tables=True),
+    )
+```
+
+For a full example see [example.py](./example.py).
 
 ## Help
 
-*Inform users on where to get help or how to receive official support from Oracle (if applicable)*
+- Open an issue in the [Issues page](./issues).
+- [Oracle NoSQL Developer Forum](https://community.oracle.com/community/groundbreakers/database/nosql_database).
 
 ## Contributing
-
-*If your project has specific contribution requirements, update the CONTRIBUTING.md file to ensure those requirements are clearly explained*
 
 This project welcomes contributions from the community. Before submitting a pull request, please [review our contribution guide](./CONTRIBUTING.md)
 
@@ -32,13 +63,5 @@ Please consult the [security guide](./SECURITY.md) for our responsible security 
 
 ## License
 
-*The correct copyright notice format for both documentation and software is*
-    "Copyright (c) [year,] year Oracle and/or its affiliates."
-*You must include the year the content was first released (on any platform) and the most recent year in which it was revised*
-
 Copyright (c) 2026 Oracle and/or its affiliates.
 
-*Replace this statement if your project is not licensed under the UPL*
-
-Released under the Universal Permissive License v1.0 as shown at
-<https://oss.oracle.com/licenses/upl/>.
