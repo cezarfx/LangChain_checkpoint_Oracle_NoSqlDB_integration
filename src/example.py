@@ -46,9 +46,6 @@ def main() -> None:
         config={
             "configurable": {
                 "thread_id": "thread_1",
-                "checkpoint_ns": "t1",
-                "checkpoint_id": "checkpoint_1",
-                "session_id": "sess_1"
             }
         }
     )
@@ -70,9 +67,6 @@ def main() -> None:
         config={
             "configurable": {
                 "thread_id": "thread_1",
-                "checkpoint_ns": "t2",
-                "checkpoint_id": "checkpoint_2",
-                "session_id": "sess_1"
             }
         }
     )
