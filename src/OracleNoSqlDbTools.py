@@ -15,16 +15,20 @@ from borneo import DeleteRequest, GetTableRequest, NoSQLHandle, NoSQLHandleConfi
     GetResult
 from borneo.kv import StoreAccessTokenProvider
 import base64
+from datetime import datetime as Datetime
 
 
 class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
     # initialize the checkpointer with a database connection and a serializer/deserializer
     def __init__(self, dbEndpoint: str = "http://localhost:8080", 
                  tableName: str = "checkpoints",
-                 drop_tables: bool = False):
-        super().__init__()
+                 drop_tables: bool = False,
+                 debug: bool = False,
+                 serde: Any = None):
+        super().__init__(serde = serde)  # Use default serde
         self._table_name = tableName
         self._table_created = False
+        self._debug = debug
 
         config = NoSQLHandleConfig(dbEndpoint, StoreAccessTokenProvider())
         self._handle = NoSQLHandle(config)
@@ -41,31 +45,37 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
 
         if drop_tables:
             try:
-                print(f"   ...Dropping table '{table_name}.writes' if it exists...")
+                if self._debug:
+                    print(f"   ...Dropping table '{table_name}.writes' if it exists...")
                 ddl = f"""DROP TABLE IF EXISTS {table_name}.writes"""
                 result = self._handle.table_request(
                     TableRequest()
                     .set_statement(ddl)
                 )
                 result.wait_for_completion(self._handle, 40000, 3000)
-                print(f"Table '{table_name}.writes' dropped.")
+                if self._debug:
+                    print(f"Table '{table_name}.writes' dropped.")
                 self._table_created = False
             except Exception as e:
-                print(f"   ...Error dropping table '{table_name}.writes': {e}")
+                if self._debug:
+                    print(f"   ...Error dropping table '{table_name}.writes': {e}")
                 self._table_created = False
         
             try:
-                print(f"   ...Dropping table '{table_name}' if it exists...")
+                if self._debug:
+                    print(f"   ...Dropping table '{table_name}' if it exists...")
                 ddl = f"""DROP TABLE IF EXISTS {table_name}"""
                 result = self._handle.table_request(
                     TableRequest()
                     .set_statement(ddl)
                 )
                 result.wait_for_completion(self._handle, 40000, 3000)
-                print(f"Table '{table_name}' dropped.")
+                if self._debug:
+                    print(f"Table '{table_name}' dropped.")
                 self._table_created = False
             except Exception as e:
-                print(f"   ...Error dropping table '{table_name}': {e}")
+                if self._debug:
+                    print(f"   ...Error dropping table '{table_name}': {e}")
                 self._table_created = False
 
         parent_table_created = False
@@ -74,11 +84,13 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         try:
             request = GetTableRequest().set_table_name(table_name)
             self._handle.get_table(request)
-            print(f"   ...Table '{table_name}' already exists.")
+            if self._debug:
+                print(f"   ...Table '{table_name}' already exists.")
             parent_table_created = True
         except Exception:
             try:
-                print(f"   ...Creating table '{table_name}'...")
+                if self._debug:
+                    print(f"   ...Creating table '{table_name}'...")
                 ddl = f"""CREATE TABLE IF NOT EXISTS {table_name} (
                             thread_id     string,
                             checkpoint_ns string,
@@ -91,20 +103,24 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
                     .set_statement(ddl)
                 )
                 result.wait_for_completion(self._handle, 40000, 3000)
-                print(f"Table '{table_name}' created.")
+                if self._debug:
+                    print(f"Table '{table_name}' created.")
                 parent_table_created = True
             except Exception as e:
-                print(f"   ...Error creating table '{table_name}': {e}")
+                if self._debug:
+                    print(f"   ...Error creating table '{table_name}': {e}")
                 parent_table_created = False
 
         try:
             request = GetTableRequest().set_table_name(table_name + ".writes")
             self._handle.get_table(request)
-            print(f"   ...Table '{table_name}.writes' already exists.")
+            if self._debug:
+                print(f"   ...Table '{table_name}.writes' already exists.")
             child_table_created = True
         except Exception:
             try:
-                print(f"   ...Creating table '{table_name}.writes'...")
+                if self._debug:
+                    print(f"   ...Creating table '{table_name}.writes'...")
                 ddl = f"""CREATE TABLE IF NOT EXISTS {table_name}.writes (
                             task_id       string,
                             task_path     string,
@@ -117,10 +133,12 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
                     .set_statement(ddl)
                 )
                 result.wait_for_completion(self._handle, 40000, 3000)
-                print(f"Table '{table_name}.writes' created.")
+                if self._debug:
+                    print(f"Table '{table_name}.writes' created.")
                 child_table_created = True
             except Exception as e:
-                print(f"   ...Error creating table '{table_name}.writes': {e}")
+                if self._debug:
+                    print(f"   ...Error creating table '{table_name}.writes': {e}")
                 child_table_created = False
 
         self._table_created = parent_table_created and child_table_created
@@ -156,47 +174,38 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         type_, blob = self.serde.dumps_typed(checkpoint)
         meta_type, serialized_metadata = self.serde.dumps_typed(metadata)
 
-        print(f"DBG: put: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}, parent_id={parent_id}, type_={type_}")
-        print(f"DBG: put: blob size={len(blob)}, serialized_metadata size={len(serialized_metadata)}")
+        if self._debug:
+            print(f"DBG: put: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}, parent_id={parent_id}, type_={type_}")
+            print(f"DBG: put: blob size={len(blob)}, serialized_metadata size={len(serialized_metadata)}")
 
         row = {
             "thread_id" : thread_id,
             "checkpoint_ns" : checkpoint_ns,
             "checkpoint_id" : checkpoint_id,
             "val_": {
-                "thread_id": thread_id,
-                "checkpoint_ns": checkpoint_ns,
-                "checkpoint_id": checkpoint_id,
                 "parent_id": parent_id,
                 "type": type_,
                 "blob": base64.b64encode(blob).decode('utf-8'),
                 "metadata_type": meta_type,
-                "metadata": base64.b64encode(serialized_metadata).decode('utf-8')
+                "metadata": base64.b64encode(serialized_metadata).decode('utf-8'),
+                "ts": Datetime.now().isoformat()
             }
         }
 
         put_request = PutRequest().set_table_name(self._table_name).set_value(row)
 
         put_result = self._handle.put(put_request)
-        print(f"DBG: put Checkpoint '{checkpoint_id}' written to table '{self._table_name}' with result: {put_result}")
+        if self._debug:
+            print(f"DBG: put Checkpoint '{checkpoint_id}' written to table '{self._table_name}' with result: {put_result}")
 
         return {
             "configurable": {
+                **config.get("configurable", {}),
                 "thread_id": thread_id,
                 "checkpoint_ns": checkpoint_ns,
                 "checkpoint_id": checkpoint_id,
             }
         }
-
-    async def aput(
-        self,
-        config: RunnableConfig,
-        checkpoint: Checkpoint,
-        metadata: CheckpointMetadata,
-        new_versions: ChannelVersions,
-    ) -> RunnableConfig:
-        return self.put(config, checkpoint, metadata, new_versions)
-
 
     def put_writes(
         self,
@@ -209,10 +218,15 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         checkpoint_ns = config.get("configurable", {}).get("checkpoint_ns", "")
         checkpoint_id = config.get("configurable", {}).get("checkpoint_id")
 
-        print(f"DBG: put_writes: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}")
+        if self._debug:
+            print(f"DBG: put_writes: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}")
+
+        if thread_id is None or checkpoint_ns is None:
+            raise ValueError("Properties thread_id and checkpoint_ns must be provided in the config.")
 
         wmReq: WriteMultipleRequest = WriteMultipleRequest()
         wmReq.set_table_name(self._table_name + ".writes")
+        ts = Datetime.now().isoformat()
 
         for idx, (channel, value) in enumerate(writes):
             type_, blob = self.serde.dumps_typed(value)
@@ -226,79 +240,19 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
                 "task_path": task_path,
                 "idx": final_idx,
                 "val_": {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": checkpoint_id,
-                    "task_id": task_id,
-                    "task_path": task_path,
-                    "idx": final_idx,
                     "channel": channel,
                     "type": type_,
-                    "value": base64.b64encode(blob).decode('utf-8')
+                    "value": base64.b64encode(blob).decode('utf-8'),
+                    "ts": ts
                 }
             }
 
             wmReq.add(PutRequest().set_table_name(self._table_name + ".writes").set_value(row), False)
 
         wmRes = self._handle.write_multiple(wmReq)
-        print(f"DBG: put_writes result: {wmRes}")
-
-
-    async def aput_writes(
-        self,
-        config: RunnableConfig,
-        writes: Sequence[tuple[str, Any]],
-        task_id: str,
-        task_path: str = "",
-    ) -> None:
-        self.put_writes(config, writes, task_id, task_path)
-        
-
-    async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
-        thread_id = config.get("configurable", {}).get("thread_id")
-        checkpoint_ns = config.get("configurable", {}).get("checkpoint_ns", "")
-        checkpoint_id = config.get("configurable", {}).get("checkpoint_id")
-
-        print(f"DBG: aget_tuple: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}")
-
-        getRes: GetResult = self._handle.get(
-            GetRequest().set_table_name(self._table_name).set_key({ 
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": checkpoint_id
-                })
-        )
-
-        row = getRes.get_value()
-        if row is None:
-            return None
-
-        parent_config = None
-        if row["val_"]["parent_checkpoint_id"]:
-            parent_config = {
-                "configurable": {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": row["val_"]["parent_checkpoint_id"],
-                }
-            }
-
-        checkpoint = self.serde.loads_typed((row["val_"]["type"], row["val_"]["blob"]))
-        metadata = self.serde.loads_typed((row["val_"]["metadata_type"], row["val_"]["metadata"]))
-
-        return CheckpointTuple(
-            config={
-                "configurable": {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": checkpoint_id,
-                }
-            },
-            checkpoint = checkpoint,
-            metadata = metadata,
-            #parent_config = RunnableConfig(parent_config["configurable"]) if parent_config else None,
-            pending_writes = None,
-        )
+        if self._debug:
+            print(f"DBG: put_writes result: {wmRes}")
+      
 
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         """Fetch a checkpoint tuple using the given configuration.
@@ -316,7 +270,8 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         checkpoint_ns = config.get("configurable", {}).get("checkpoint_ns", "")
         checkpoint_id = config.get("configurable", {}).get("checkpoint_id")
 
-        print(f"DBG: get_tuple: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}")
+        if self._debug:
+            print(f"DBG: get_tuple: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}, checkpoint_id={checkpoint_id}")
 
         # read checkpoint
         if checkpoint_id:
@@ -333,7 +288,6 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         else:
             qRes = self._handle.query(
                 QueryRequest().set_statement(
-                    # f"SELECT * FROM {self._table_name} WHERE thread_id = '{thread_id}' ORDER BY checkpoint_ns, checkpoint_id DESC LIMIT 1"
                     f"SELECT * FROM {self._table_name} \
                       WHERE thread_id = '{thread_id}' and checkpoint_ns = '{checkpoint_ns}' \
                       ORDER BY checkpoint_id DESC LIMIT 1"
@@ -372,15 +326,15 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         metadata = self.serde.loads_typed((row["val_"]["metadata_type"], base64.b64decode(row["val_"]["metadata"].encode('utf-8'))))
 
 
-        parent_config = None
-        if row["val_"].get("parent_checkpoint_id"):
-            parent_config = {
-                "configurable": {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": row["val_"].get("parent_checkpoint_id"),
-                }
-            }
+        # parent_config = None
+        # if row["val_"].get("parent_checkpoint_id"):
+        #     parent_config = {
+        #         "configurable": {
+        #             "thread_id": thread_id,
+        #             "checkpoint_ns": checkpoint_ns,
+        #             "checkpoint_id": row["val_"].get("parent_checkpoint_id"),
+        #         }
+        #     }
 
         return CheckpointTuple(
             config={
@@ -390,60 +344,73 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
                     "checkpoint_id": row["checkpoint_id"]
                 }
             },
-            checkpoint = checkpoint,         #row["value"]["blob"],
-            metadata = metadata,             #row["value"]["metadata"],
-            parent_config = parent_config ,   #RunnableConfig(parent_config["configurable"]) if parent_config else None,
-            pending_writes = pending_writes, #None,
+            checkpoint = checkpoint,         
+            metadata = metadata,             
+            parent_config = None, 
+            pending_writes = pending_writes,
         )
 
-    async def alist(
+    def list(
         self,
         config: RunnableConfig | None,
         *,
         filter: dict[str, Any] | None = None,
         before: RunnableConfig | None = None,
         limit: int | None = None,
-    ) -> AsyncIterator[CheckpointTuple]:
+    ) -> Iterator[CheckpointTuple]:
         thread_id = config.get("configurable", {}).get("thread_id")
-        checkpoint_id = before.get("configurable", {}).get("checkpoint_id", "")
+        checkpoint_ns = config.get("configurable", {}).get("checkpoint_ns", "")
 
-        print(f"DBG: alist: checkpoint_id={checkpoint_id}")
+        if self._debug:
+            print(f"DBG: list: thread_id={thread_id}, checkpoint_ns={checkpoint_ns}")
 
-        qRes = self._handle.query(
-            QueryRequest().set_statement(
-                f"SELECT * FROM {self._table_name} \
-                    WHERE \
-                        thread_id = '{thread_id}' AND \
-                        checkpoint_id < '{checkpoint_id}' \
-                    ORDER BY checkpoint_id DESC LIMIT {limit if limit else 10}"
-            )
-        )
+        checkpoint_id = None
+        if before:
+            checkpoint_id = before.get("configurable", {}).get("checkpoint_id", None)
+
+        query = f"SELECT * FROM {self._table_name} \
+                                    WHERE \
+                                        thread_id = '{thread_id}' AND \
+                                        checkpoint_ns = '{checkpoint_ns}' "
+        query += f"                     AND checkpoint_id < '{checkpoint_id}' " if checkpoint_id else ""
+        query += f"                 ORDER BY checkpoint_id DESC LIMIT {limit if limit else 10}"
+
+        qReq = QueryRequest().set_statement(query)
+        qRes = self._handle.query(qReq)
 
         while True:
+            if self._debug:
+                print(f"DBG: list: querying...")
             qRes = self._handle.query(qReq)
+
             qRecs = qRes.get_results()
+            for r in qRecs:
+                checkpoint = self.serde.loads_typed((r["val_"]["type"], base64.b64decode(r["val_"]["blob"].encode('utf-8'))))
+                metadata = self.serde.loads_typed((r["val_"]["metadata_type"], base64.b64decode(r["val_"]["metadata"].encode('utf-8'))))
+
+                # yield  # make this an async generator
+                yield CheckpointTuple(
+                    config={
+                        "configurable": {
+                            "thread_id": thread_id,
+                            "checkpoint_ns": r.get("checkpoint_ns"),
+                            "checkpoint_id": r.get("checkpoint_id"),
+                            "ts": r.get("val_", {}).get("ts")
+                        }
+                    },
+                    checkpoint = checkpoint,
+                    metadata = metadata,
+                    pending_writes = None,
+                )
+
             if qReq.is_done():
                 break
-            else: 
-                for r in qRecs:
-                    # yield  # make this an async generator
-                    yield CheckpointTuple(
-                        config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "checkpoint_ns": r.get("checkpoint_ns"),
-                                "checkpoint_id": r.get("checkpoint_id"),
-                            }
-                        },
-                        checkpoint = None,
-                        metadata = None,
-                        pending_writes = None,
-                    )
 
 
     async def adelete_thread(self, thread_id: str) -> None:
         """Delete all checkpoints associated with a specific thread ID."""
-        print(f"DBG: adelete_thread: thread_id={thread_id}")
+        if self._debug:
+            print(f"DBG: adelete_thread: thread_id={thread_id}")
 
         delRes = self._handle.delete(
             DeleteRequest().set_table_name(self._table_name).set_key({ 
