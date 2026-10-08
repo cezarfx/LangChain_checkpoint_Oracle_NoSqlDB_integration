@@ -10,7 +10,7 @@ from langgraph.checkpoint.base import (
     CheckpointMetadata,
     CheckpointTuple,
 )
-from borneo import DeleteRequest, GetTableRequest, NoSQLHandle, NoSQLHandleConfig, QueryRequest, \
+from borneo import MultiDeleteRequest, GetTableRequest, NoSQLHandle, NoSQLHandleConfig, QueryRequest, \
     TableRequest, PutRequest, GetRequest, WriteMultipleRequest, \
     GetResult
 from borneo.kv import StoreAccessTokenProvider
@@ -19,8 +19,17 @@ from datetime import datetime as Datetime
 
 
 class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
-    # initialize the checkpointer with a database connection and a serializer/deserializer
-    def __init__(self, dbEndpoint: str = "http://localhost:8080", 
+    # staic metho for creating a checkpointer from an endpoint string
+    @staticmethod
+    def create_from_db_endpoint(dbEndpoint: str,
+                 tableName: str = "checkpoints",
+                 drop_tables: bool = False,
+                 debug: bool = False,
+                 serde: Any = None):
+        dbConfig = NoSQLHandleConfig(dbEndpoint,  StoreAccessTokenProvider())
+        return OracleNoSqlDbCheckpointer(dbConfig, tableName, drop_tables, debug, serde)
+
+    def __init__(self, dbConfig: NoSQLHandleConfig, 
                  tableName: str = "checkpoints",
                  drop_tables: bool = False,
                  debug: bool = False,
@@ -30,8 +39,7 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
         self._table_created = False
         self._debug = debug
 
-        config = NoSQLHandleConfig(dbEndpoint, StoreAccessTokenProvider())
-        self._handle = NoSQLHandle(config)
+        self._handle = NoSQLHandle(dbConfig)
         self.create_table(tableName, drop_tables=drop_tables)
 
     def create_table(self, table_name: str, drop_tables: bool = False) -> bool:
@@ -407,14 +415,32 @@ class OracleNoSqlDbCheckpointer(BaseCheckpointSaver):
                 break
 
 
-    async def adelete_thread(self, thread_id: str) -> None:
-        """Delete all checkpoints associated with a specific thread ID."""
-        if self._debug:
-            print(f"DBG: adelete_thread: thread_id={thread_id}")
+    def delete_thread(
+        self,
+        thread_id: str,
+    ) -> None:
+        """Delete all checkpoints and writes associated with a specific thread ID.
 
-        delRes = self._handle.delete(
-            DeleteRequest().set_table_name(self._table_name).set_key({ 
+        Args:
+            thread_id: The thread ID whose checkpoints should be deleted.
+        """
+        if self._debug:
+            print(f"DBG: delete_thread: thread_id={thread_id}")
+
+        delRes = self._handle.multi_delete(
+            MultiDeleteRequest().set_table_name(self._table_name).set_key({ 
                 "thread_id": thread_id
             })
         )
 
+        if self._debug:
+            print(f"  DBG: delete_thread: deleted {delRes.get_num_deletions()} checkpoints for '{thread_id}'")
+
+        delRes = self._handle.multi_delete(
+            MultiDeleteRequest().set_table_name(self._table_name + ".writes").set_key({ 
+                "thread_id": thread_id
+            })
+        )
+
+        if self._debug:
+            print(f"  DBG: delete_thread: deleted {delRes.get_num_deletions()} writes for '{thread_id}'")
