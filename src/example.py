@@ -24,21 +24,29 @@ def build_llm():
 def main() -> None:
 
     print("=== List checkpoints ===")
-    checkpointer = OracleNoSqlDbCheckpointer(ORACLE_NOSQL_DB_ENDPOINT, debug=True, drop_tables=False)
+
+    checkpointer = OracleNoSqlDbCheckpointer.create_from_db_endpoint(ORACLE_NOSQL_DB_ENDPOINT, debug=True, drop_tables=False)
+
     cpIter = checkpointer.list(
         config={"configurable": {"thread_id": "thread_1"}},
         limit=10,
     )
 
     for cp in cpIter:
-        q = cp.checkpoint.get('channel_values', {}).get("messages", [])[-1].content
-        if q:
+        q = cp.checkpoint.get('channel_values', {}).get("messages", [])
+        if q and isinstance(q, list) and len(q) > 0:
+            q = q[-1].content
             q = q.strip()[0:60] + "..." if len(q) > 60 else q.strip() 
+        else:
+            q = "<no messages>"
 
         print(f"   Cpt: {cp.config.get('configurable', {}).get('checkpoint_id')} ", q)
         # thread_id: {cp.config.get('configurable', {}).get('thread_id')}, \
         # cp_ns: {cp.config.get('configurable', {}).get('checkpoint_ns')}, \
         # ts: {cp.config.get('configurable', {}).get('ts')}, \
+
+    print("\n=== Delete checkpoints ===")
+    checkpointer.delete_thread("thread_1")
 
 
     llm = build_llm()
@@ -88,8 +96,8 @@ def main() -> None:
         }
     )
 
-    print("\n  - LLM 2nd Response ===")
-    print(response["messages"][-1].content)
+    # print("\n  - LLM 2nd Response ===")
+    # print(response["messages"][-1].content)
 
 
 if __name__ == "__main__":
