@@ -24,10 +24,19 @@ pip install borneo, langchain, langgraph, langgraph-checkpoint, oci
 
 The LangChan agent has to be created with an ```OracleNoSqlDbCheckpointer``` as in the example below.
 
-The ```OracleNoSqlDbCheckpointer``` has 3 parameters:
-  - dbEndpoint - the endpoint of the NoSQL Database, by default uses local on-premises: "http://localhost:8080"
-  - tableName - The parent table name to use for checkpoints. It uses 2 tables: a checkpoint parent table by default "checkpoints" and a child table "checkpoint.writes". 
+The ```OracleNoSqlDbCheckpointer``` constructor has 4 parameters:
+  - dbConfig - the config for the NoSQL Database as a [NoSQLHandleConfig](https://nosql-python-sdk.readthedocs.io/en/stable/api/borneo.NoSQLHandleConfig.html#borneo.NoSQLHandleConfig)
+    This allows connecting to all supported types of NoSQL DB instances, including the Oracle NoSQL DB cloud service.
+  - tableName - The parent table name to use for checkpoints. It uses 2 tables: a checkpoint parent table by default "checkpoints" and a child table "checkpoints.writes". 
   - drop_tables - Drops the current tables if True. By default is False.
+  - debug - If verbose output is required.
+
+Use ```OracleNoSqlDbCheckpointer.create_from_db_endpoint()``` method to connect to an on-premices, usually local, instance.
+  - dbEndpoint - the endpoint of the NoSQL Database, by default uses local on-premises: "http://localhost:8080"
+  - tableName - The parent table name.
+  - drop_tables - Drops previous tables.
+  - debug - For verbose output.
+
 
 ## Examples
 
@@ -44,7 +53,7 @@ agent = create_agent(
         system_prompt=(
             "You are a helpful assistant."
         ),
-        checkpointer = OracleNoSqlDbCheckpointer(ORACLE_NOSQL_DB_ENDPOINT,
+        checkpointer = OracleNoSqlDbCheckpointer.create_from_db_endpoint(ORACLE_NOSQL_DB_ENDPOINT,
             tableName: str = "checkpoints",
             drop_tables=True),
     )
